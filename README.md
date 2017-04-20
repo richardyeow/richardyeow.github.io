@@ -1,37 +1,94 @@
-## Welcome to GitHub Pages
+---
+title: 'Peer-graded Assignment: Prediction Assignment Writeup'
+author: "Richard Yeow"
+date: "April 18, 2017"
+output: html_document
+---
 
-You can use the [editor on GitHub](https://github.com/richardyeow/richardyeow.github.io/edit/master/README.md) to maintain and preview the content for your website in Markdown files.
-
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
-
-### Markdown
-
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
-
-```markdown
-Syntax highlighted code block
-
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
 ```
 
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
+#Synoposis
 
-### Jekyll Themes
+People regularly quantify how much of a particular activity they do, not how well they do it. This project will use the data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
 
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/richardyeow/richardyeow.github.io/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
+The goal is to predict the manner in which they did the exercise. 
 
-### Support or Contact
+This report should include:
+-description on how the model is built
+-how cross validation is used
+-what is the expected out of sample error
+-reason for the choices made
 
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
+The prediction model will also used to predict 20 different test cases.
+
+#Data Processing
+##Loading the data
+```{r}
+set.seed(123) #for the purpose of reproducible
+
+# Set the URL for the download
+TrainURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+TestURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+# Download and load the data
+OriTrain <- read.csv(url(TrainURL))
+OriTest <- read.csv(url(TestURL))
+```
+##Data partition
+In order to estimate out-of-sample error, we split the original training dataset into 70% for prediction, 30% for validation.
+```{r}
+library(caret)
+inTrain <- createDataPartition(OriTrain$classe, p = 0.7, list = FALSE)
+PredData <- OriTrain[inTrain, ]
+ValData <- OriTrain[-inTrain, ]
+```
+##Clean the data
+Reduce the number of features by removing variables with nearly zero variance, variables that are almost always NA, and variables that don’t make intuitive sense for prediction. Since PredData and ValData are from the same source, we will perform identifcal removal for PredData and ValData 
+```{r}
+#Removing variables with nearly zero variance
+nzv <- nearZeroVar(PredData)
+PredData <- PredData[,-nzv]
+ValData <- ValData[,-nzv]
+
+#Removing variables that are almost always NA
+MostlyNA <- sapply(PredData, function(x) mean(is.na(x))) > 0.95
+PredData <- PredData[, MostlyNA == FALSE]
+ValData <- ValData[, MostlyNA == FALSE]
+
+#Removing variable that don’t make intuitive sense for prediction - the first five column
+PredData <- PredData[, -c(1:5)]
+ValData <- ValData[, -c(1:5)]
+```
+#Prediction Algorithms (Model Building)
+##Random Forest
+```{r}
+#Using 3-fold cross validation to select optimal tuning parameter
+control <- trainControl(method = "cv", number = 3) 
+
+#Fit model on Prediction Data
+fit <- train(classe ~ ., data = PredData, method = "rf", trControl = control)
+
+#Print final model to see tuning parameters it chose
+fit$finalModel
+```
+##Model Evaluation and Selection
+Using the fitted model to predict the label (“classe”) in Validation Data (ValData), and show the confusion matrix to compare the predicted versus the actual labels
+
+```{R}
+#Use model to predict classe in Validation Data (ValData)
+PredictTrain <- predict(fit, newdata = ValData)
+
+#Show confusion matrix to get estimate of out-of-sample error
+confusionMatrix(ValData$classe, PredictTrain)
+```
+The accuracy is 99.81%, thus the predicted accuracy for the out-of-sample error is 0.19%.
+
+With the accuracy above, we will use Random Forests to predict on the test set data.
+
+##Predicting Test Set Data
+```{r}
+PredictTest <- predict(fit, newdata = OriTest)
+PredictTest
+```
